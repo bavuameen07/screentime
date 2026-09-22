@@ -1,20 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 interface Batch {
   id: number;
   label: string;
   startHour: number;
   endHour: number;
-  color: string;
 }
 
 const BATCHES: Batch[] = [
-  { id: 1, label: "Morning", startHour: 9, endHour: 12, color: "bg-yellow-400" },
-  { id: 2, label: "Afternoon", startHour: 12, endHour: 15, color: "bg-yellow-500" },
-  { id: 3, label: "Evening", startHour: 15, endHour: 18, color: "bg-yellow-600" },
-  { id: 4, label: "Night", startHour: 18, endHour: 21, color: "bg-yellow-300" },
+  { id: 1, label: "Morning", startHour: 9, endHour: 12 },
+  { id: 2, label: "Afternoon", startHour: 12, endHour: 15 },
+  { id: 3, label: "Evening", startHour: 15, endHour: 18 },
+  { id: 4, label: "Night", startHour: 18, endHour: 21 },
 ];
 
 const AUDIO_CONTEXT = typeof window !== "undefined" ? new (window.AudioContext || (window as any).webkitAudioContext)() : null;
@@ -88,6 +88,43 @@ function formatMs(ms: number): string {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
+interface Tilt3DProps {
+  children: ReactNode;
+  className?: string;
+  max?: number;
+}
+
+function Tilt3D({ children, className = "", max = 8 }: Tilt3DProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  const handleMouseMove = (e: ReactMouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width;
+    const py = (e.clientY - rect.top) / rect.height;
+    const rx = (0.5 - py) * max;
+    const ry = (px - 0.5) * max;
+    el.style.transform = `perspective(1100px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
+  };
+
+  const handleMouseLeave = () => {
+    const el = ref.current;
+    if (el) el.style.transform = "";
+  };
+
+  return (
+    <div
+      ref={ref}
+      className={`tilt-scene ${className}`}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function ScreenTimeTracker() {
   const [currentBatch, setCurrentBatch] = useState<Batch | null>(null);
   const [remainingMs, setRemainingMs] = useState(0);
@@ -96,12 +133,37 @@ export default function ScreenTimeTracker() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isDark, setIsDark] = useState(false);
   const prevBatchRef = useRef<number | null>(null);
   const audioInitialized = useRef(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem("theme");
+    } catch {
+      stored = null;
+    }
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const initial = stored ? stored === "dark" : prefersDark;
+    setIsDark(initial);
+    document.documentElement.classList.toggle("dark", initial);
+  }, []);
+
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    try {
+      localStorage.setItem("theme", next ? "dark" : "light");
+    } catch {
+      // ignore write failures (private browsing, disabled storage)
+    }
+  };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -171,108 +233,143 @@ export default function ScreenTimeTracker() {
   }, []);
 
   return (
-    <div className="min-h-screen premium-bg p-4 sm:p-6 lg:p-8 flex flex-col">
+    <div className="min-h-screen classic-bg p-4 sm:p-6 lg:p-8 flex flex-col frame-scene">
       <div className="w-full flex-1 flex flex-col">
-        <div className="gold-border rounded-3xl p-px flex-1 flex flex-col">
-          <div className="bg-gradient-to-b from-neutral-900 to-black rounded-[calc(1.5rem-1px)] shadow-2xl shadow-yellow-900/20 flex-1 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-8 sm:px-12 pt-8 sm:pt-10 pb-6">
+        <div className="classic-frame rounded-lg p-px flex-1 flex flex-col transition-colors duration-500 animate-frame-in">
+          <div className="bg-paper rounded-[calc(0.5rem-1px)] shadow-lg shadow-black/10 flex-1 flex flex-col overflow-hidden transition-colors duration-500">
+            <div className="h-[3px] bg-navy transition-colors duration-500 shrink-0"></div>
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 px-8 sm:px-12 pt-8 sm:pt-10 pb-6 border-b border-line transition-colors duration-500 animate-fade-up"
+              style={{ animationDelay: "0.05s" }}
+            >
               <div className="flex items-baseline gap-4 text-left">
-                <span className="text-xl sm:text-2xl font-semibold text-yellow-100/90 tracking-wide">
+                <span className="text-xl sm:text-2xl font-serif text-heading transition-colors duration-500">
                   {mounted ? currentTime.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : ""}
                 </span>
-                <span className="text-lg sm:text-xl text-yellow-400/80 font-mono tracking-widest">
+                <span className="text-base sm:text-lg text-muted font-mono">
                   {mounted ? currentTime.toLocaleTimeString() : ""}
                 </span>
               </div>
-              <button
-                onClick={toggleFullscreen}
-                className="px-5 py-2.5 rounded-full bg-gradient-to-b from-yellow-300 to-yellow-600 text-black text-sm font-bold tracking-wide shadow-lg shadow-yellow-500/20 hover:shadow-yellow-400/40 hover:from-yellow-200 hover:to-yellow-500 active:scale-95 transition-all"
-              >
-                {isFullscreen ? "Normal Screen" : "Full Screen"}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={toggleTheme}
+                  title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                  className="px-4 py-2.5 rounded border border-navy-edge bg-paper text-heading text-sm font-semibold tracking-wide shadow-sm hover:bg-cream active:scale-95 transition-all"
+                >
+                  {isDark ? "Light" : "Dark"}
+                </button>
+                <button
+                  onClick={toggleFullscreen}
+                  className="px-5 py-2.5 rounded border border-navy-deep bg-navy text-ivory text-sm font-semibold tracking-wide shadow-sm hover:bg-navy-deep active:scale-95 transition-all"
+                >
+                  {isFullscreen ? "Normal Screen" : "Full Screen"}
+                </button>
+              </div>
             </div>
 
-            <div className="text-center mb-8 px-8">
+            <div className="text-center mb-8 px-8 animate-fade-up" style={{ animationDelay: "0.12s" }}>
               <div className="flex items-center justify-center gap-3 mb-4">
-                <span className="h-px w-16 bg-gradient-to-r from-transparent to-yellow-500/50"></span>
-                <span className="text-yellow-500/70 text-lg leading-none">◆</span>
-                <span className="h-px w-16 bg-gradient-to-l from-transparent to-yellow-500/50"></span>
+                <span className="h-px w-16 bg-gradient-to-r from-transparent to-line"></span>
+                <span className="text-brass text-lg leading-none">◆</span>
+                <span className="h-px w-16 bg-gradient-to-l from-transparent to-line"></span>
               </div>
-              <h1 className="text-4xl sm:text-5xl font-bold gold-text gold-glow tracking-[0.15em] uppercase">
+              <h1 className="text-4xl sm:text-5xl font-serif font-bold text-heading tracking-wide transition-colors duration-500">
                 Your Remaining Time
               </h1>
-              <p className="mt-3 text-yellow-400/50 text-sm tracking-[0.3em] uppercase">
+              <p className="mt-3 text-brass text-xs font-semibold tracking-[0.3em] uppercase transition-colors duration-500">
                 {mounted ? currentTime.toLocaleTimeString() : "--:--:--"}
               </p>
             </div>
 
             <div className="space-y-6 px-8 sm:px-12 pb-8 flex-1 flex flex-col">
-              <div className={`rounded-2xl p-8 flex-1 flex flex-col justify-center relative overflow-hidden transition-all duration-500 ${isWaiting ? "bg-neutral-800/80" : "gold-panel"}`}>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,0,0,0.15),transparent_50%)]"></div>
-                <div className="relative flex items-center justify-between mb-4">
-                  <span className={`text-xs font-semibold tracking-[0.25em] uppercase ${isWaiting ? "text-yellow-400/60" : "text-black/70"}`}>
-                    {isWaiting ? "Waiting for" : "Current Batch"}
-                  </span>
-                  {!isWaiting && currentBatch && (
-                    <span className="px-4 py-1.5 rounded-full bg-black/20 text-black text-xs font-bold tracking-widest uppercase border border-black/10">
-                      Batch {currentBatch.id}
-                    </span>
-                  )}
-                </div>
-                
-                <h2 className={`relative text-4xl sm:text-5xl font-bold tracking-wide ${isWaiting ? "text-yellow-100/70" : "text-black"}`}>
-                  {isWaiting ? `Next: ${nextBatchLabel}` : currentBatch?.label}
-                </h2>
-                
-                {isWaiting && (
-                  <p className="relative mt-3 text-yellow-400/60">
-                    Starts at {isWaiting && currentTime.getHours() < 9 ? "9:00 AM" : "9:00 AM tomorrow"}
-                  </p>
-                )}
-              </div>
-
-              <div className="bg-neutral-900/90 rounded-2xl p-8 flex-1 flex flex-col justify-center text-center border border-yellow-900/20 shadow-inner shadow-black/40">
-                <div className="text-xs font-semibold text-yellow-400/70 uppercase tracking-[0.3em] mb-3">
-                  Time Remaining
-                </div>
-                <div className="font-mono text-6xl sm:text-7xl font-bold gold-text gold-glow tabular-nums tracking-tight">
-                  {formatMs(remainingMs)}
-                </div>
-                <div className="mt-3 text-sm text-yellow-400/50 tracking-wide">
-                  {isWaiting 
-                    ? `Until ${nextBatchLabel} batch starts`
-                    : `Until Batch ${(currentBatch?.id || 0) % 4 + 1} starts`}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-4 gap-3">
-                {BATCHES.map((batch) => (
+              <div className="flex-1 flex flex-col animate-fade-up" style={{ animationDelay: "0.18s" }}>
+                <Tilt3D className="flex-1 flex flex-col" max={9}>
+                  <span className="depth-diamond pointer-events-none select-none left-1/2 -top-3 -ml-1.5 text-brass text-lg leading-none">◆</span>
                   <div
-                    key={batch.id}
-                    className={`py-4 px-2 rounded-xl text-center text-sm font-medium transition-all ${
-                      currentBatch?.id === batch.id
-                        ? `gold-panel text-black shadow-xl shadow-yellow-500/20 scale-105 ring-2 ring-yellow-300/70`
-                        : "bg-neutral-800/60 text-yellow-400/60 border border-yellow-900/20 hover:border-yellow-500/40 hover:text-yellow-300 hover:bg-neutral-800"
-                    }`}
+                    className={`rounded-md p-8 flex-1 flex flex-col justify-center relative overflow-hidden transition-all duration-500 border ${isWaiting ? "bg-paper border-line" : "bg-navy border-navy-deep"}`}
                   >
-                    <div className="font-bold tracking-widest">{batch.id}</div>
-                    <div className="text-xs uppercase tracking-widest mt-1 opacity-80">{batch.label}</div>
-                    <div className="text-xs opacity-60 mt-0.5">
-                      {batch.startHour}:00-{batch.endHour}:00
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_45%)]"></div>
+                    <div className="relative flex items-center justify-between mb-4">
+                      <span className={`text-xs font-semibold tracking-[0.25em] uppercase transition-colors duration-500 ${isWaiting ? "text-brass" : "text-brass-light"}`}>
+                        {isWaiting ? "Waiting for" : "Current Batch"}
+                      </span>
+                      {!isWaiting && currentBatch && (
+                        <span className="px-4 py-1.5 rounded border border-navy-edge bg-navy-deep text-ivory text-xs font-bold tracking-widest uppercase transition-colors duration-500">
+                          Batch {currentBatch.id}
+                        </span>
+                      )}
+                    </div>
+
+                    <h2
+                      key={`${isWaiting}-${isWaiting ? nextBatchLabel : currentBatch?.id ?? "none"}`}
+                      className={`animate-flip-y relative text-4xl sm:text-5xl font-serif font-bold tracking-wide transition-colors duration-500 ${isWaiting ? "text-ink" : "text-ivory"}`}
+                    >
+                      {isWaiting ? `Next: ${nextBatchLabel}` : currentBatch?.label}
+                    </h2>
+
+                    {isWaiting && (
+                      <p className="relative mt-3 text-muted transition-colors duration-500">
+                        Starts at {isWaiting && currentTime.getHours() < 9 ? "9:00 AM" : "9:00 AM tomorrow"}
+                      </p>
+                    )}
+                  </div>
+                </Tilt3D>
+              </div>
+
+              <div className="flex-1 flex flex-col animate-fade-up" style={{ animationDelay: "0.24s" }}>
+                <Tilt3D className="flex-1 flex flex-col" max={9}>
+                  <div className="bg-cream rounded-md p-8 flex-1 flex flex-col justify-center text-center border border-line transition-colors duration-500">
+                    <div className="text-xs font-semibold text-brass uppercase tracking-[0.3em] mb-3 transition-colors duration-500">
+                      Time Remaining
+                    </div>
+                    <div
+                      key={remainingMs}
+                      className="font-mono text-6xl sm:text-7xl font-bold text-heading tabular-nums tracking-tight animate-tick"
+                    >
+                      {formatMs(remainingMs)}
+                    </div>
+                    <div className="mt-3 text-sm text-muted tracking-wide transition-colors duration-500">
+                      {isWaiting 
+                        ? `Until ${nextBatchLabel} batch starts`
+                        : `Until Batch ${(currentBatch?.id || 0) % 4 + 1} starts`}
                     </div>
                   </div>
+                </Tilt3D>
+              </div>
+
+              <div className="grid grid-cols-4 gap-3 animate-fade-up" style={{ animationDelay: "0.3s" }}>
+                {BATCHES.map((batch, index) => (
+                  <Tilt3D key={batch.id} max={14}>
+                    <div
+                      style={{ animationDelay: `${0.32 + index * 0.06}s` }}
+                      className={`animate-flip-y h-full py-4 px-2 rounded text-center text-sm transition-all border ${
+                        currentBatch?.id === batch.id
+                          ? "bg-navy text-ivory border-navy-deep pop-active"
+                          : "bg-paper text-muted border-line hover:border-navy-edge hover:text-heading"
+                      }`}
+                    >
+                      <div className="font-bold">{batch.id}</div>
+                      <div className="text-xs uppercase tracking-widest mt-1 opacity-90">{batch.label}</div>
+                      <div className="text-xs opacity-70 mt-0.5 font-mono">
+                        {batch.startHour}:00-{batch.endHour}:00
+                      </div>
+                    </div>
+                  </Tilt3D>
                 ))}
               </div>
 
-              <div className="pt-5 border-t border-yellow-900/20 mt-auto">
-                <div className="flex items-center justify-center gap-3 text-xs text-yellow-400/50 tracking-widest uppercase">
+              <div
+                className="pt-5 border-t border-line mt-auto transition-colors duration-500 animate-fade-up"
+                style={{ animationDelay: "0.36s" }}
+              >
+                <div className="flex items-center justify-center gap-3 text-xs text-muted tracking-widest uppercase">
                   <span className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#4e8f63] dark:bg-[#6bb78a] animate-pulse"></span>
                     Live
                   </span>
-                  <span className="text-yellow-500/30">◆</span>
+                  <span className="text-brass/60">◆</span>
                   <span>Updates every second</span>
-                  <span className="text-yellow-500/30">◆</span>
+                  <span className="text-brass/60">◆</span>
                   <span>Beep at transitions</span>
                 </div>
               </div>
